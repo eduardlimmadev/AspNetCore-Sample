@@ -1,5 +1,33 @@
-node {
-    def built_img = ''
+pipeline {
+  def built_img = ''
+  agent {
+    kubernetes {
+      yaml '''
+        apiVersion: v1
+        kind: Pod
+        spec:
+          containers:
+          - name: maven
+            image: maven:alpine
+            command:
+            - cat
+            tty: true
+          - name: docker
+            image: docker:latest
+            command:
+            - cat
+            tty: true
+            volumeMounts:
+            - mountPath: /var/run/docker.sock
+              name: docker-sock
+          volumes:
+          - name: docker-sock
+            hostPath:
+              path: /var/run/docker.sock
+      '''
+    }
+  }
+  stages {
     stage('Checkout git repo') {
       git branch: 'master', url: params.git_repo
     }
@@ -14,13 +42,14 @@ node {
       sh 'echo test'
     }
     stage('Browser Tests'){
-        parallel(
-            "Edge":{sh 'echo test'},
-            "Firefox":{sh 'echo test'},
-            "Chrome":{sh 'echo test'}
-            )
+      parallel(
+        "Edge":{sh 'echo test'},
+        "Firefox":{sh 'echo test'},
+        "Chrome":{sh 'echo test'}
+      )
     }
     stage('Deploy into k8s') {
       sh(script: "cat cicd/k8s.yaml | sed -e 's/build_number/${BUILD_NUMBER}/g' -e 's/YourACRName/${acr_username}/g' | kubectl apply -f - --kubeconfig /var/lib/jenkins/.kube/config", returnStdout: true)
     }
+  }
 }
